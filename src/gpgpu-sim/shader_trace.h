@@ -39,6 +39,9 @@
 #define SHADER_DTRACE(x) \
   (DTRACE(x) &&          \
    (Trace::sampling_core == get_sid() || Trace::sampling_core == -1))
+#define FU_DTRACE(x) \
+  (DTRACE(x) &&          \
+   (Trace::sampling_core == m_core->get_sid() || Trace::sampling_core == -1))
 
 // Intended to be called from inside components of a shader core.
 // Depends on a get_sid() function
@@ -63,6 +66,19 @@
                  m_shader->get_gpu()->gpu_tot_sim_cycle,                 \
              Trace::trace_streams_str[Trace::WARP_SCHEDULER], get_sid(), \
              m_id);                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
+
+// Intended to be called from inside components of a function unit.
+#define FU_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (FU_DTRACE(FUNCTION_UNIT)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             m_core->get_gpu()->gpu_sim_cycle +                        \
+                 m_core->get_gpu()->gpu_tot_sim_cycle,                 \
+              Trace::trace_streams_str[Trace::FUNCTION_UNIT], m_core->get_sid() \
+             );                                                      \
       printf(__VA_ARGS__);                                               \
     }                                                                    \
   } while (0)

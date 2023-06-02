@@ -2311,6 +2311,7 @@ pipelined_simd_unit::pipelined_simd_unit(register_set *result_port,
 void pipelined_simd_unit::cycle() {
   if (!m_pipeline_reg[0]->empty()) {
     m_result_port->move_in(m_pipeline_reg[0]);
+	FU_DPRINTF("Move to result_port - PC:0x%x\n",m_pipeline_reg[0]->pc);
     assert(active_insts_in_pipeline > 0);
     active_insts_in_pipeline--;
   }
@@ -2323,6 +2324,8 @@ void pipelined_simd_unit::cycle() {
       int start_stage =
           m_dispatch_reg->latency - m_dispatch_reg->initiation_interval;
       move_warp(m_pipeline_reg[start_stage], m_dispatch_reg);
+	  FU_DPRINTF("Move to m_pipeline_reg[%d] - PC:0x%x\n",
+		  start_stage, m_pipeline_reg[start_stage]->pc);
       active_insts_in_pipeline++;
     }
   }
@@ -2335,6 +2338,8 @@ void pipelined_simd_unit::issue(register_set &source_reg) {
   m_core->incexecstat((*ready_reg));
   // source_reg.move_out_to(m_dispatch_reg);
   simd_function_unit::issue(source_reg);
+  FU_DPRINTF("Move to m_dispatch_reg (latency:%d) - PC:0x%x\n",
+	  m_dispatch_reg->latency, m_dispatch_reg->pc);
 }
 
 /*
