@@ -26,6 +26,7 @@
 // CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 // ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 // POSSIBILITY OF SUCH DAMAGE.
+#define TRACE_CORE 4
 
 #include "shader.h"
 #include <float.h>
@@ -854,8 +855,13 @@ void shader_core_ctx::decode() {
   if (m_inst_fetch_buffer.m_valid) {
     // decode 1 or 2 instructions and place them into ibuffer
     address_type pc = m_inst_fetch_buffer.m_pc;
+	//printf("PC : 0x%x\n", pc);
     const warp_inst_t *pI1 = get_next_inst(m_inst_fetch_buffer.m_warp_id, pc);
+	//printf("\n");
     m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(0, pI1);
+	SHADER_DPRINTF(DECODE, "Fill into I-Buffer(1) - pc : 0x%x\n", pc);
+//	pI1->print_insn(stdout);
+//	printf("\n");
     m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
     if (pI1) {
       m_stats->m_num_decoded_insn[m_sid]++;
@@ -868,6 +874,8 @@ void shader_core_ctx::decode() {
           get_next_inst(m_inst_fetch_buffer.m_warp_id, pc + pI1->isize);
       if (pI2) {
         m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(1, pI2);
+		SHADER_DPRINTF(DECODE, "Fill into I-Buffer(2) - pc : 0x%x\n",
+			pc + pI1->isize);
         m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
         m_stats->m_num_decoded_insn[m_sid]++;
         if (pI2->oprnd_type == INT_OP) {
@@ -884,7 +892,10 @@ void shader_core_ctx::decode() {
 void shader_core_ctx::fetch() {
   if (!m_inst_fetch_buffer.m_valid) {
     if (m_L1I->access_ready()) {
-      mem_fetch *mf = m_L1I->next_access();
+	  mem_fetch *mf = m_L1I->next_access();
+	  SHADER_DPRINTF(FETCH, "Access ready in L1I - PC : 0x%x \n",
+		  m_warp[mf->get_wid()]->get_pc());
+	  //mf->print(stdout);
       m_warp[mf->get_wid()]->clear_imiss_pending();
       m_inst_fetch_buffer =
           ifetch_buffer_t(m_warp[mf->get_wid()]->get_pc(),
@@ -897,6 +908,7 @@ void shader_core_ctx::fetch() {
       m_warp[mf->get_wid()]->set_last_fetch(m_gpu->gpu_sim_cycle);
       delete mf;
     } else {
+		//SHADER_DPRINTF("Not ready to access in m_L2I - sid:%d\n", m_sid);
       // find an active warp with space in instruction buffer that is not
       // already waiting on a cache miss and get next 1-2 instructions from
       // i-cache...
@@ -962,20 +974,27 @@ void shader_core_ctx::fetch() {
 
           if (status == MISS) {
             m_last_warp_fetched = warp_id;
+			SHADER_DPRINTF(FETCH, "L1 cache MISS - pc : 0x%x \n", 
+				pc);
             m_warp[warp_id]->set_imiss_pending();
             m_warp[warp_id]->set_last_fetch(m_gpu->gpu_sim_cycle);
           } else if (status == HIT) {
+		    SHADER_DPRINTF(FETCH, "L1 cache HIT - pc : 0x%x \n",
+				pc);
+			//mf->print(stdout);
             m_last_warp_fetched = warp_id;
             m_inst_fetch_buffer = ifetch_buffer_t(pc, nbytes, warp_id);
             m_warp[warp_id]->set_last_fetch(m_gpu->gpu_sim_cycle);
             delete mf;
           } else {
+			SHADER_DPRINTF(FETCH, "L1 cache status : %s\n", status);
             m_last_warp_fetched = warp_id;
             assert(status == RESERVATION_FAIL);
             delete mf;
           }
           break;
         }
+		//else SHADER_DPRINTF("pending or finished warp:%d\n",warp_id);
       }
     }
   }
@@ -987,7 +1006,7 @@ void exec_shader_core_ctx::func_exec_inst(warp_inst_t &inst) {
   execute_warp_inst_t(inst);
   if (inst.is_load() || inst.is_store()) {
     inst.generate_mem_accesses();
-    // inst.print_m_accessq();
+    //inst.print_m_accessq();
   }
 }
 
@@ -1025,10 +1044,11 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
 }
 
 void shader_core_ctx::issue() {
-  // Ensure fair round robin issu between schedulers
+  // Ensure fair round robin issue between schedulers
   unsigned j;
   for (unsigned i = 0; i < schedulers.size(); i++) {
     j = (Issue_Prio + i) % schedulers.size();
+	
     schedulers[j]->cycle();
   }
   Issue_Prio = (Issue_Prio + 1) % schedulers.size();
@@ -1128,7 +1148,7 @@ void scheduler_unit::order_by_priority(
 }
 
 void scheduler_unit::cycle() {
-  SCHED_DPRINTF("scheduler_unit::cycle()\n");
+  //SCHED_DPRINTF("scheduler_unit::cycle()\n");
   bool valid_inst =
       false;  // there was one warp with a valid instruction to issue (didn't
               // require flush due to control hazard)
@@ -1144,8 +1164,8 @@ void scheduler_unit::cycle() {
     if ((*iter) == NULL || (*iter)->done_exit()) {
       continue;
     }
-    SCHED_DPRINTF("Testing (warp_id %u, dynamic_warp_id %u)\n",
-                  (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
+//    SCHED_DPRINTF("Testing (warp_id %u, dynamic_warp_id %u)\n",
+//               (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
     unsigned warp_id = (*iter)->get_warp_id();
     unsigned checked = 0;
     unsigned issued = 0;
@@ -1158,16 +1178,20 @@ void scheduler_unit::cycle() {
                                                  // units (as in Maxwell and
                                                  // Pascal)
 
-    if (warp(warp_id).ibuffer_empty())
-      SCHED_DPRINTF(
-          "Warp (warp_id %u, dynamic_warp_id %u) fails as ibuffer_empty\n",
-          (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
+    if (!warp(warp_id).ibuffer_empty() && !warp(warp_id).waiting())
+	  SCHED_DPRINTF(
+		  "Checked I-Buffer is Filled and Not waiting barrier\n"); 
+//      SCHED_DPRINTF(
+//          "\nWarp (warp_id %u, dynamic_warp_id %u) fails as ibuffer_empty\n",
+//          (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
 
     if (warp(warp_id).waiting())
-      SCHED_DPRINTF(
-          "Warp (warp_id %u, dynamic_warp_id %u) fails as waiting for "
-          "barrier\n",
-          (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
+	  SCHED_DPRINTF(
+		  "Checked warp is waiting barrier\n"); 
+//      SCHED_DPRINTF(
+//          "\nWarp (warp_id %u, dynamic_warp_id %u) fails as waiting for "
+//          "barrier\n",
+//          (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
 
     while (!warp(warp_id).waiting() && !warp(warp_id).ibuffer_empty() &&
            (checked < max_issue) && (checked <= issued) &&
@@ -1185,7 +1209,7 @@ void scheduler_unit::cycle() {
       unsigned pc, rpc;
       m_shader->get_pdom_stack_top_info(warp_id, pI, &pc, &rpc);
       SCHED_DPRINTF(
-          "Warp (warp_id %u, dynamic_warp_id %u) has valid instruction (%s)\n",
+          "Warp (warp_id %u, dynamic_warp_id %u) has valid instruction \n(%s)\n",
           (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id(),
           m_shader->m_config->gpgpu_ctx->func_sim->ptx_get_insn_str(pc)
               .c_str());
@@ -1193,19 +1217,23 @@ void scheduler_unit::cycle() {
         assert(valid);
         if (pc != pI->pc) {
           SCHED_DPRINTF(
-              "Warp (warp_id %u, dynamic_warp_id %u) control hazard "
-              "instruction flush\n",
-              (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
+              "Warp has control hazard\n");
+//              "Warp (warp_id %u, dynamic_warp_id %u) control hazard "
+//              "instruction flush\n",
+//              (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
           // control hazard
           warp(warp_id).set_next_pc(pc);
           warp(warp_id).ibuffer_flush();
         } else {
+		  SCHED_DPRINTF(
+			  "Warp passes control hazard check\n");
           valid_inst = true;
           if (!m_scoreboard->checkCollision(warp_id, pI)) {
-            SCHED_DPRINTF(
-                "Warp (warp_id %u, dynamic_warp_id %u) passes scoreboard\n",
-                (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
+//                "Warp (warp_id %u, dynamic_warp_id %u) passes scoreboard\n",
+//                (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
             ready_inst = true;
+            SCHED_DPRINTF(
+                "Warp passes scoreboard\n");
 
             const active_mask_t &active_mask =
                 m_shader->get_active_mask(warp_id, pI);
@@ -3355,6 +3383,7 @@ void shader_core_config::set_pipeline_latency() {
 
 void shader_core_ctx::cycle() {
   if (!isactive() && get_not_completed() == 0) return;
+ // SHADER_DPRINTF("[CYCLE in core]\n");
 
   m_stats->shader_cycles[m_sid]++;
   writeback();
@@ -4310,6 +4339,8 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
 }
 
 void simt_core_cluster::icnt_cycle() {
+  
+  //SHADER_DPRINTF("[SIMT Core Clusters]\n");
   if (!m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
     unsigned cid = m_config->sid_to_cid(mf->get_sid());

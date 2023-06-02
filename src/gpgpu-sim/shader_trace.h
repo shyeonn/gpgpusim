@@ -52,6 +52,7 @@
     }                                                         \
   } while (0)
 
+
 // Intended to be called from inside a scheduler_unit.
 // Depends on a m_id member
 #define SCHED_DPRINTF(...)                                               \
@@ -67,6 +68,7 @@
   } while (0)
 
 #else
+
 
 #define SHADER_DTRACE(x) (false)
 #define SHADER_DPRINTF(x, ...) \

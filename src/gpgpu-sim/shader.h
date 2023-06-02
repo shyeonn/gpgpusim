@@ -1043,10 +1043,9 @@ class simd_function_unit {
     source_reg.move_out_to(m_dispatch_reg);
     occupied.set(m_dispatch_reg->latency);
   }
-  virtual void cycle() = 0;
-  virtual void active_lanes_in_pipeline() = 0;
-
-  // accessors
+  virtual void cycle() = 0; 
+  virtual void active_lanes_in_pipeline() = 0; 
+  // accessors 
   virtual unsigned clock_multiplier() const { return 1; }
   virtual bool can_issue(const warp_inst_t &inst) const {
     return m_dispatch_reg->empty() && !occupied.test(inst.latency);
@@ -2320,6 +2319,7 @@ class simt_core_cluster {
   }
   void push_response_fifo(class mem_fetch *mf) {
     m_response_fifo.push_back(mf);
+	//mf->print(stdout);
   }
 
   void get_pdom_stack_top_info(unsigned sid, unsigned tid, unsigned *pc,
