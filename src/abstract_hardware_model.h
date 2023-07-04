@@ -1352,6 +1352,10 @@ class register_set {
     }
   }
 
+  const char *get_name(){
+	return m_name;
+  }
+
   warp_inst_t **get_free() {
     for (unsigned i = 0; i < regs.size(); i++) {
       if (regs[i]->empty()) {

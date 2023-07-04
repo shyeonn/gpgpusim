@@ -42,6 +42,16 @@
 #define FU_DTRACE(x) \
   (DTRACE(x) &&          \
    (Trace::sampling_core == m_core->get_sid() || Trace::sampling_core == -1))
+#define OP_DTRACE(x) \
+  (DTRACE(x) &&          \
+   (Trace::sampling_core == shader_core()->get_sid() || Trace::sampling_core == -1))
+
+#define DPRINTF_NOCYCLE(...)                                \
+  do {                                                        \
+    if (Trace::sampling_core == get_sid() || Trace::sampling_core == -1){\
+      printf(__VA_ARGS__);                                    \
+    }                                                         \
+  } while (0)
 
 // Intended to be called from inside components of a shader core.
 // Depends on a get_sid() function
@@ -83,6 +93,19 @@
     }                                                                    \
   } while (0)
 
+// Intended to be called from inside components of a Operand collector.
+#define OP_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (OP_DTRACE(OPNDCOLL)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             shader_core()->get_gpu()->gpu_sim_cycle +                        \
+                 shader_core()->get_gpu()->gpu_tot_sim_cycle,                 \
+             Trace::trace_streams_str[Trace::OPNDCOLL], \
+		     shader_core()->get_sid() \
+             );                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
 #else
 
 

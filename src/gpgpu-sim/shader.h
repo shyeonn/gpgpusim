@@ -878,6 +878,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     }
     unsigned get_sp_op() const { return m_warp->sp_op; }
     unsigned get_id() const { return m_cuid; }  // returns CU hw id
+	unsigned get_pc() const { return m_warp->pc; }
+	const char *get_output_name() { return m_output_register->get_name(); }
 
     // modifiers
     void init(unsigned n, unsigned num_banks, unsigned log2_warp_size,
