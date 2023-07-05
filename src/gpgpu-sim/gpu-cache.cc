@@ -1563,7 +1563,7 @@ enum cache_request_status data_cache::rd_miss_base(
 
 /// Access cache for read_only_cache: returns RESERVATION_FAIL if
 // request could not be accepted (for any reason)
-1num cache_request_status read_only_cache::access(
+enum cache_request_status read_only_cache::access(
     new_addr_type addr, mem_fetch *mf, unsigned time,
     std::list<cache_event> &events) {
   assert(mf->get_data_size() <= m_config.get_atom_sz());

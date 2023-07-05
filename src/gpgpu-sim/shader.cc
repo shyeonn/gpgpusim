@@ -892,19 +892,17 @@ void shader_core_ctx::fetch() {
   if (!m_inst_fetch_buffer.m_valid) {
     if (m_L1I->access_ready()) {
 	  mem_fetch *mf = m_L1I->next_access();
-	  SHADER_DPRINTF(FETCH, "Access ready in L1I - PC : 0x%x \n",
-		  m_warp[mf->get_wid()]->get_pc());
-	  //mf->print(stdout);
-      m_warp[mf->get_wid()]->clear_imiss_pending();
+	  unsigned wid = mf->get_wid();
+	  SHADER_DPRINTF(FETCH, "warp %d - Access ready in L1I - PC : 0x%x \n",
+		  wid, m_warp[wid]->get_pc());
+      m_warp[wid]->clear_imiss_pending();
       m_inst_fetch_buffer =
-          ifetch_buffer_t(m_warp[mf->get_wid()]->get_pc(),
-                          mf->get_access_size(), mf->get_wid());
-      assert(m_warp[mf->get_wid()]->get_pc() ==
-             (mf->get_addr() -
-              PROGRAM_MEM_START));  // Verify that we got the instruction we
-                                    // were expecting.
+          ifetch_buffer_t(m_warp[wid]->get_pc(),
+                          mf->get_access_size(), wid);
+      assert(m_warp[wid]->get_pc() == (mf->get_addr() - PROGRAM_MEM_START));  
+	  // Verify that we got the instruction we were expecting.
       m_inst_fetch_buffer.m_valid = true;
-      m_warp[mf->get_wid()]->set_last_fetch(m_gpu->gpu_sim_cycle);
+      m_warp[wid]->set_last_fetch(m_gpu->gpu_sim_cycle);
       delete mf;
     } else {
 		//SHADER_DPRINTF("Not ready to access in m_L1I - sid:%d\n", m_sid);
@@ -972,21 +970,21 @@ void shader_core_ctx::fetch() {
                 m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, events);
 
           if (status == MISS) {
+			SHADER_DPRINTF(FETCH, "warp %d - L1 cache MISS - pc : 0x%x \n", 
+				warp_id, pc);
             m_last_warp_fetched = warp_id;
-			SHADER_DPRINTF(FETCH, "L1 cache MISS - pc : 0x%x \n", 
-				pc);
             m_warp[warp_id]->set_imiss_pending();
             m_warp[warp_id]->set_last_fetch(m_gpu->gpu_sim_cycle);
           } else if (status == HIT) {
-		    SHADER_DPRINTF(FETCH, "L1 cache HIT - pc : 0x%x \n",
-				pc);
-			//mf->print(stdout);
+		    SHADER_DPRINTF(FETCH, "warp %d - L1 cache HIT - pc : 0x%x \n",
+				warp_id, pc);
             m_last_warp_fetched = warp_id;
             m_inst_fetch_buffer = ifetch_buffer_t(pc, nbytes, warp_id);
             m_warp[warp_id]->set_last_fetch(m_gpu->gpu_sim_cycle);
             delete mf;
           } else {
-			SHADER_DPRINTF(FETCH, "L1 cache status : %s\n", status);
+			SHADER_DPRINTF(FETCH, "warp %d - L1 cache status : %s\n", 
+				warp_id, status);
             m_last_warp_fetched = warp_id;
             assert(status == RESERVATION_FAIL);
             delete mf;
@@ -2332,7 +2330,7 @@ void pipelined_simd_unit::cycle() {
       move_warp(m_pipeline_reg[stage], m_pipeline_reg[stage + 1]);
   }
   if (!m_dispatch_reg->empty()) {
-	FU_DPRINTF("Dispatch delay : %d\n", m_dispatch_reg->dispatch_delay());
+//FU_DPRINTF("Dispatch delay : %d\n", m_dispatch_reg->dispatch_delay());
     if (!m_dispatch_reg->dispatch_delay()) {
       int start_stage =
           m_dispatch_reg->latency - m_dispatch_reg->initiation_interval;
