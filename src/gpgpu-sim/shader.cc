@@ -854,14 +854,11 @@ void shader_core_ctx::decode() {
   if (m_inst_fetch_buffer.m_valid) {
     // decode 1 or 2 instructions and place them into ibuffer
     address_type pc = m_inst_fetch_buffer.m_pc;
-	//printf("PC : 0x%x\n", pc);
-    const warp_inst_t *pI1 = get_next_inst(m_inst_fetch_buffer.m_warp_id, pc);
-	//printf("\n");
-    m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(0, pI1);
-	SHADER_DPRINTF(DECODE, "Fill into I-Buffer(1) - pc : 0x%x\n", pc);
-//	pI1->print_insn(stdout);
-//	printf("\n");
-    m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
+	unsigned wid = m_inst_fetch_buffer.m_warp_id;
+    const warp_inst_t *pI1 = get_next_inst(wid, pc);
+    m_warp[wid]->ibuffer_fill(0, pI1);
+	SHADER_DPRINTF(DECODE, "warp %d - Fill into I-Buffer(1) - pc : 0x%x\n", wid, pc);
+    m_warp[wid]->inc_inst_in_pipeline();
     if (pI1) {
       m_stats->m_num_decoded_insn[m_sid]++;
       if (pI1->oprnd_type == INT_OP) {
@@ -870,12 +867,12 @@ void shader_core_ctx::decode() {
         m_stats->m_num_FPdecoded_insn[m_sid]++;
       }
       const warp_inst_t *pI2 =
-          get_next_inst(m_inst_fetch_buffer.m_warp_id, pc + pI1->isize);
+          get_next_inst(wid, pc + pI1->isize);
       if (pI2) {
-        m_warp[m_inst_fetch_buffer.m_warp_id]->ibuffer_fill(1, pI2);
-		SHADER_DPRINTF(DECODE, "Fill into I-Buffer(2) - pc : 0x%x\n",
-			pc + pI1->isize);
-        m_warp[m_inst_fetch_buffer.m_warp_id]->inc_inst_in_pipeline();
+        m_warp[wid]->ibuffer_fill(1, pI2);
+		SHADER_DPRINTF(DECODE, "warp %d - Fill into I-Buffer(2) - pc : 0x%x\n",
+			wid, pc + pI1->isize);
+        m_warp[wid]->inc_inst_in_pipeline();
         m_stats->m_num_decoded_insn[m_sid]++;
         if (pI2->oprnd_type == INT_OP) {
           m_stats->m_num_INTdecoded_insn[m_sid]++;
@@ -1145,7 +1142,6 @@ void scheduler_unit::order_by_priority(
 }
 
 void scheduler_unit::cycle() {
-  //SCHED_DPRINTF("scheduler_unit::cycle()\n");
   bool valid_inst =
       false;  // there was one warp with a valid instruction to issue (didn't
               // require flush due to control hazard)
