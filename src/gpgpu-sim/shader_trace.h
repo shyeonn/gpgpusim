@@ -65,6 +65,16 @@
     }                                                         \
   } while (0)
 
+#define CACHE_DPRINTF(x, ...)                                \
+  do {                                                        \
+    if (SHADER_DTRACE(x)) {                                   \
+      printf(SHADER_PRINT_STR,                                \
+             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, \
+             Trace::trace_streams_str[Trace::x], get_sid());  \
+      printf(__VA_ARGS__);                                    \
+    }                                                         \
+  } while (0)
+
 
 // Intended to be called from inside a scheduler_unit.
 // Depends on a m_id member
@@ -92,6 +102,20 @@
       printf(__VA_ARGS__);                                               \
     }                                                                    \
   } while (0)
+
+// Intended to be called from inside components of a function unit.
+#define LDST_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (FU_DTRACE(LDST)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             m_core->get_gpu()->gpu_sim_cycle +                        \
+                 m_core->get_gpu()->gpu_tot_sim_cycle,                 \
+              Trace::trace_streams_str[Trace::LDST], m_core->get_sid() \
+             );                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
+
 
 // Intended to be called from inside components of a Operand collector.
 #define OP_DPRINTF(...)                                               \

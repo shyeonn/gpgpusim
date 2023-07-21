@@ -1147,6 +1147,9 @@ class warp_inst_t : public inst_t {
 
   bool has_dispatch_delay() { return cycles > 0; }
 
+  unsigned long long dispatch_cycle() {return cycles;}
+  
+
   void print(FILE *fout) const;
   unsigned get_uid() const { return m_uid; }
   unsigned get_schd_id() const { return m_scheduler_id; }

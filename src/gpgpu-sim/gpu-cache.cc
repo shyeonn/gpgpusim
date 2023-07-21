@@ -42,7 +42,6 @@ const char *cache_request_status_str(enum cache_request_status status) {
   assert(sizeof(static_cache_request_status_str) / sizeof(const char *) ==
          NUM_CACHE_REQUEST_STATUS);
   assert(status < NUM_CACHE_REQUEST_STATUS);
-
   return static_cache_request_status_str[status];
 }
 
@@ -1018,6 +1017,7 @@ void baseline_cache::cycle() {
   if (!m_miss_queue.empty()) {
     mem_fetch *mf = m_miss_queue.front();
     if (!m_memport->full(mf->size(), mf->get_is_write())) {
+	  printf("Push to m_memport - Addr : %#x\n", mf->get_addr());
       m_miss_queue.pop_front();
       m_memport->push(mf);
     }
@@ -1117,6 +1117,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
   if (mshr_hit && mshr_avail) {
+	printf("mshr hit & mshr_avail\n");
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
@@ -1127,6 +1128,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
 
   } else if (!mshr_hit && mshr_avail &&
              (m_miss_queue.size() < m_config.m_miss_queue_size)) {
+	printf("~mshr hit & mshr_avail\n");
     if (read_only)
       m_tag_array->access(block_addr, time, cache_index, mf);
     else
@@ -1141,14 +1143,19 @@ void baseline_cache::send_read_request(new_addr_type addr,
     mf->set_data_size(m_config.get_atom_sz());
     mf->set_addr(mshr_addr);
     m_miss_queue.push_back(mf);
+	printf("Push to m_miss_queue - Addr : %#x\n", mf->get_addr());
     mf->set_status(m_miss_queue_status, time);
     if (!wa) events.push_back(cache_event(READ_REQUEST_SENT));
 
     do_miss = true;
-  } else if (mshr_hit && !mshr_avail)
+  } else if (mshr_hit && !mshr_avail){
+	printf("mshr hit & ~mshr_avail\n");
     m_stats.inc_fail_stats(mf->get_access_type(), MSHR_MERGE_ENRTY_FAIL);
-  else if (!mshr_hit && !mshr_avail)
+  }
+  else if (!mshr_hit && !mshr_avail){
+	printf("~mshr hit & ~mshr_avail\n");
     m_stats.inc_fail_stats(mf->get_access_type(), MSHR_ENRTY_FAIL);
+  }
   else
     assert(0);
 }
@@ -1599,6 +1606,8 @@ enum cache_request_status read_only_cache::access(
                     m_stats.select_stats_status(status, cache_status));
   m_stats.inc_stats_pw(mf->get_access_type(),
                        m_stats.select_stats_status(status, cache_status));
+  printf("RO cache %s - Addr : %#llx\n", 
+	  cache_status_decode[cache_status], addr);
   return cache_status;
 }
 
@@ -1666,6 +1675,8 @@ enum cache_request_status data_cache::access(new_addr_type addr, mem_fetch *mf,
                     m_stats.select_stats_status(probe_status, access_status));
   m_stats.inc_stats_pw(mf->get_access_type(), m_stats.select_stats_status(
                                                   probe_status, access_status));
+  printf("Data cache %s - Addr : %#llx\n", 
+	  cache_status_decode[access_status], addr);
   return access_status;
 }
 
@@ -1730,6 +1741,8 @@ enum cache_request_status tex_cache::access(new_addr_type addr, mem_fetch *mf,
                     m_stats.select_stats_status(status, cache_status));
   m_stats.inc_stats_pw(mf->get_access_type(),
                        m_stats.select_stats_status(status, cache_status));
+  printf("Tex cache %s - Addr : %#llx\n", 
+	  cache_status_decode[cache_status], addr);
   return cache_status;
 }
 

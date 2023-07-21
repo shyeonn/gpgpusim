@@ -52,6 +52,10 @@ enum cache_request_status {
   NUM_CACHE_REQUEST_STATUS
 };
 
+const char *const cache_status_decode[] = 
+  {"HIT", "HIT_RESERVED", "MISS", "RESERVATION_FAIL",
+	"SECTOR_MISS", "NUM_CACHE_REQUEST_STATUS"};
+
 enum cache_reservation_fail_reason {
   LINE_ALLOC_FAIL = 0,  // all line are reserved
   MISS_QUEUE_FULL,      // MISS queue (i.e. interconnect or DRAM) is full
