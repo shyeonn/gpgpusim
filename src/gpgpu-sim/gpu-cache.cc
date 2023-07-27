@@ -1116,6 +1116,7 @@ void baseline_cache::send_read_request(new_addr_type addr,
   new_addr_type mshr_addr = m_config.mshr_addr(mf->get_addr());
   bool mshr_hit = m_mshrs.probe(mshr_addr);
   bool mshr_avail = !m_mshrs.full(mshr_addr);
+  printf("send_read_req\n");
   if (mshr_hit && mshr_avail) {
 	printf("mshr hit & mshr_avail\n");
     if (read_only)

@@ -838,6 +838,8 @@ const warp_inst_t *exec_shader_core_ctx::get_next_inst(unsigned warp_id,
   return m_gpu->gpgpu_ctx->ptx_fetch_inst(pc);
 }
 
+void exec_shader_core_ctx
+
 void exec_shader_core_ctx::get_pdom_stack_top_info(unsigned warp_id,
                                                    const warp_inst_t *pI,
                                                    unsigned *pc,
@@ -888,6 +890,7 @@ void shader_core_ctx::decode() {
 void shader_core_ctx::fetch() {
   if (!m_inst_fetch_buffer.m_valid) {
     if (m_L1I->access_ready()) {
+	  //L1 -> Fetch unit
 	  mem_fetch *mf = m_L1I->next_access();
 	  unsigned wid = mf->get_wid();
 	  SHADER_DPRINTF(FETCH, "warp %d - Access ready in L1I - PC : 0x%x \n",
@@ -896,13 +899,13 @@ void shader_core_ctx::fetch() {
       m_inst_fetch_buffer =
           ifetch_buffer_t(m_warp[wid]->get_pc(),
                           mf->get_access_size(), wid);
+	  //Fetch unit -> I-Buffer
       assert(m_warp[wid]->get_pc() == (mf->get_addr() - PROGRAM_MEM_START));  
 	  // Verify that we got the instruction we were expecting.
       m_inst_fetch_buffer.m_valid = true;
       m_warp[wid]->set_last_fetch(m_gpu->gpu_sim_cycle);
       delete mf;
     } else {
-		//SHADER_DPRINTF("Not ready to access in m_L1I - sid:%d\n", m_sid);
       // find an active warp with space in instruction buffer that is not
       // already waiting on a cache miss and get next 1-2 instructions from
       // i-cache...
@@ -915,6 +918,7 @@ void shader_core_ctx::fetch() {
         if (m_warp[warp_id]->hardware_done() &&
             !m_scoreboard->pendingWrites(warp_id) &&
             !m_warp[warp_id]->done_exit()) {
+		  printf("warp fin\n");
           bool did_exit = false;
           for (unsigned t = 0; t < m_config->warp_size; t++) {
             unsigned tid = warp_id * m_config->warp_size + t;
@@ -1008,6 +1012,7 @@ void shader_core_ctx::issue_warp(register_set &pipe_reg_set,
                                  const warp_inst_t *next_inst,
                                  const active_mask_t &active_mask,
                                  unsigned warp_id, unsigned sch_id) {
+  //Take free instruction place
   warp_inst_t **pipe_reg =
       pipe_reg_set.get_free(m_config->sub_core_model, sch_id);
   assert(pipe_reg);
@@ -1704,8 +1709,9 @@ void shader_core_ctx::execute() {
   for (unsigned n = 0; n < m_num_function_units; n++) {
     unsigned multiplier = m_fu[n]->clock_multiplier();
     for (unsigned c = 0; c < multiplier; c++) m_fu[n]->cycle();
+	//For power model
 	m_fu[n]->active_lanes_in_pipeline();
-    unsigned issue_port = m_issue_port[n];
+	unsigned issue_port = m_issue_port[n];
     register_set &issue_inst = m_pipeline_reg[issue_port];
     warp_inst_t **ready_reg = issue_inst.get_ready();
 	//check instruction is not empty and fu has free
@@ -1714,16 +1720,20 @@ void shader_core_ctx::execute() {
 	  pipeline_stage_name_decode[issue_port], (*ready_reg)->pc);
       bool schedule_wb_now = !m_fu[n]->stallable();
       int resbus = -1;
+	  //LDST & Check m_result_bus is free
       if (schedule_wb_now &&
           (resbus = test_res_bus((*ready_reg)->latency)) != -1) {
         assert((*ready_reg)->latency < MAX_ALU_LATENCY);
         m_result_bus[resbus]->set((*ready_reg)->latency);
         m_fu[n]->issue(issue_inst);
-      } else if (!schedule_wb_now) {
+      } 
+	  //Pipeline_simd_unit
+	  else if (!schedule_wb_now) {
         m_fu[n]->issue(issue_inst);
-      } else {
-        // stall issue (cannot reserve result bus)
-      }
+      } 
+	  else {
+		SHADER_DPRINTF(EXECUTE, "Stall issue (cannot reserve result bus)");
+	  }
 	}
   }
 }
@@ -1734,9 +1744,7 @@ void ldst_unit::print_cache_stats(FILE *fp, unsigned &dl1_accesses,
     m_L1D->print(fp, dl1_accesses, dl1_misses);
   }
 }
-
-void ldst_unit::get_cache_stats(cache_stats &cs) {
-  // Adds stats to 'cs' from each cache
+void ldst_unit::get_cache_stats(cache_stats &cs) { // Adds stats to 'cs' from each cache
   if (m_L1D) cs += m_L1D->get_stats();
   if (m_L1C) cs += m_L1C->get_stats();
   if (m_L1T) cs += m_L1T->get_stats();
@@ -1836,6 +1844,7 @@ bool ldst_unit::shared_cycle(warp_inst_t &inst, mem_stage_stall_type &rc_fail,
 
   bool stall = inst.dispatch_delay();
   if (stall) {
+	LDST_DPRINTF("Stall %d cycle in shared mem\n", stall);
     fail_type = S_MEM;
     rc_fail = BK_CONF;
   } else
@@ -1915,6 +1924,7 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
       if (inst.accessq_empty()) return result;
 
+	  LDST_DPRINTF("Allocate mf in l1cache - PC :%#x\n", inst.pc);
       mem_fetch *mf =
           m_mf_allocator->alloc(inst, inst.accessq_back(),
                                 m_core->get_gpu()->gpu_sim_cycle +
@@ -1925,7 +1935,8 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
       if ((l1_latency_queue[bank_id][m_config->m_L1D_config.l1_latency - 1]) ==
           NULL) {
         l1_latency_queue[bank_id][m_config->m_L1D_config.l1_latency - 1] = mf;
-
+		LDST_DPRINTF("Push mf in latency queue - bank_id : %d, pos : %d\n", 
+			bank_id, m_config->m_L1D_config.l1_latency - 1);
         if (mf->get_inst().is_store()) {
           unsigned inc_ack =
               (m_config->m_L1D_config.get_mshr_type() == SECTOR_ASSOC)
@@ -1938,6 +1949,7 @@ mem_stage_stall_type ldst_unit::process_memory_access_queue_l1cache(
 
         inst.accessq_pop_back();
       } else {
+		LDST_DPRINTF("Cannot push latency queue\n");
         result = BK_CONF;
         delete mf;
         break;  // do not try again, just break from the loop and try the next
@@ -1967,6 +1979,7 @@ void ldst_unit::L1_latency_queue_cycle() {
     if ((l1_latency_queue[j][0]) != NULL) {
       mem_fetch *mf_next = l1_latency_queue[j][0];
       std::list<cache_event> events;
+	  LDST_DPRINTF("Access L1D - Addr : %#x\n", mf_next->get_addr());
       enum cache_request_status status =
           m_L1D->access(mf_next->get_addr(), mf_next,
                         m_core->get_gpu()->gpu_sim_cycle +
@@ -2023,7 +2036,8 @@ void ldst_unit::L1_latency_queue_cycle() {
 
     for (unsigned stage = 0; stage < m_config->m_L1D_config.l1_latency - 1;
          ++stage)
-      if (l1_latency_queue[j][stage] == NULL) {
+      if (l1_latency_queue[j][stage] == NULL && l1_latency_queue[j][stage+1]) {
+		LDST_DPRINTF("Move %d -> %d in l1_latency_queue\n", stage+1 ,stage);
         l1_latency_queue[j][stage] = l1_latency_queue[j][stage + 1];
         l1_latency_queue[j][stage + 1] = NULL;
       }
@@ -2464,7 +2478,7 @@ void ldst_unit::issue(register_set &reg_set) {
       unsigned reg_id = inst->out[r];
       if (reg_id > 0) {
         m_pending_writes[warp_id][reg_id] += n_accesses;
-		printf("Pending writes increased in constant_cycle - warp_id : %u, reg_id : %u, val : %u\n", warp_id, reg_id, m_pending_writes[warp_id][reg_id]);
+		printf("Pending writes increased - warp_id : %u, reg_id : %u, val : %u\n", warp_id, reg_id, m_pending_writes[warp_id][reg_id]);
       }
     }
   }
@@ -2487,8 +2501,8 @@ void ldst_unit::writeback() {
           if (m_next_wb.space.get_type() != shared_space) {
             assert(m_pending_writes[m_next_wb.warp_id()][m_next_wb.out[r]] > 0);
             unsigned still_pending =
-                --m_pending_writes[m_next_wb.warp_id()][m_next_wb.out[r]];
-            if (!still_pending) {
+                --m_pending_writes[m_next_wb.warp_id()][m_next_wb.out[r]]; 
+			if (!still_pending) {
               m_pending_writes[m_next_wb.warp_id()].erase(m_next_wb.out[r]);
               m_scoreboard->releaseRegister(m_next_wb.warp_id(),
                                             m_next_wb.out[r]);
@@ -2532,7 +2546,7 @@ void ldst_unit::writeback() {
         break;
       case 1:  // texture response
         if (m_L1T->access_ready()) {
-		  LDST_DPRINTF("Texture\n");
+		  LDST_DPRINTF("Texture Response\n");
           mem_fetch *mf = m_L1T->next_access();
           m_next_wb = mf->get_inst();
           delete mf;
@@ -2541,7 +2555,7 @@ void ldst_unit::writeback() {
         break;
       case 2:  // const cache response
         if (m_L1C->access_ready()) {
-		  LDST_DPRINTF("Const\n");
+		  LDST_DPRINTF("Const Response\n");
           mem_fetch *mf = m_L1C->next_access();
           m_next_wb = mf->get_inst();
           delete mf;
@@ -2550,7 +2564,7 @@ void ldst_unit::writeback() {
         break;
       case 3:  // global/local
         if (m_next_global) {
-		  LDST_DPRINTF("global/local\n");
+		  LDST_DPRINTF("Global/local Response\n");
           m_next_wb = m_next_global->get_inst();
           if (m_next_global->isatomic()) {
             m_core->decrement_atomic_count(
@@ -2564,7 +2578,7 @@ void ldst_unit::writeback() {
         break;
       case 4:
         if (m_L1D && m_L1D->access_ready()) {
-		  LDST_DPRINTF("L1D\n");
+		  LDST_DPRINTF("L1D Response\n");
           mem_fetch *mf = m_L1D->next_access();
           m_next_wb = mf->get_inst();
           delete mf;
@@ -2617,15 +2631,18 @@ void ldst_unit::cycle() {
   for (int i = 0; i < m_config->reg_file_port_throughput; ++i)
     m_operand_collector->step();
   for (unsigned stage = 0; (stage + 1) < m_pipeline_depth; stage++)
-    if (m_pipeline_reg[stage]->empty() && !m_pipeline_reg[stage + 1]->empty())
+    if (m_pipeline_reg[stage]->empty() && !m_pipeline_reg[stage + 1]->empty()){
       move_warp(m_pipeline_reg[stage], m_pipeline_reg[stage + 1]);
-
+	}
   if (!m_response_fifo.empty()) {
     mem_fetch *mf = m_response_fifo.front();
+	LDST_DPRINTF("Get mem_fetch from response_fifo - addr : %#x\n", 
+		mf->get_addr());
     if (mf->get_access_type() == TEXTURE_ACC_R) {
       if (m_L1T->fill_port_free()) {
         m_L1T->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle);
+		LDST_DPRINTF("Fill L1T\n"); 
         m_response_fifo.pop_front();
       }
     } else if (mf->get_access_type() == CONST_ACC_R) {
@@ -2635,6 +2652,7 @@ void ldst_unit::cycle() {
                            m_core->get_gpu()->gpu_tot_sim_cycle);
         m_L1C->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                             m_core->get_gpu()->gpu_tot_sim_cycle);
+		LDST_DPRINTF("Fill L1C\n"); 
         m_response_fifo.pop_front();
       }
     } else {
@@ -2657,6 +2675,7 @@ void ldst_unit::cycle() {
         }
         if (bypassL1D) {
           if (m_next_global == NULL) {
+		  LDST_DPRINTF("Set global\n"); 
             mf->set_status(IN_SHADER_FETCHED,
                            m_core->get_gpu()->gpu_sim_cycle +
                                m_core->get_gpu()->gpu_tot_sim_cycle);
@@ -2665,6 +2684,7 @@ void ldst_unit::cycle() {
           }
         } else {
           if (m_L1D->fill_port_free()) {
+			LDST_DPRINTF("Fill L1D\n"); 
             m_L1D->fill(mf, m_core->get_gpu()->gpu_sim_cycle +
                                 m_core->get_gpu()->gpu_tot_sim_cycle);
             m_response_fifo.pop_front();
@@ -2692,6 +2712,7 @@ void ldst_unit::cycle() {
   m_mem_rc = rc_fail;
 
   if (!done) {  // log stall types and return
+	LDST_DPRINTF("Stall in LDST\n");
     assert(rc_fail != NO_RC_FAIL);
     m_stats->gpgpu_n_stall_shd_mem++;
     m_stats->gpu_stall_shd_mem_breakdown[type][rc_fail]++;
