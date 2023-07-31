@@ -42,6 +42,23 @@ class gpgpu_context;
 #define MAX_INPUT_VALUES 24
 #define MAX_OUTPUT_VALUES 8
 
+
+enum cycle_check_pos {
+  p_fetch_start = 0,
+  p_fetch_end,
+  p_decode,
+  p_issue_start,
+  issue_end,
+  opnd_start,
+  opnd_end,
+  fu_issue,
+  fu_start,
+  fu_end,
+  writeback,
+
+  MAX_CHECK_POS
+}; 
+
 enum _memory_space_t {
   undefined_space = 0,
   reg_space,
@@ -998,6 +1015,7 @@ class warp_inst_t : public inst_t {
     m_uid = 0;
     m_empty = true;
     m_config = NULL;
+	m_cycle_check_arr = {0, };
   }
   warp_inst_t(const core_config *config) {
     m_uid = 0;
@@ -1011,6 +1029,7 @@ class warp_inst_t : public inst_t {
     m_is_printf = false;
     m_is_cdp = 0;
     should_do_atomic = true;
+	m_cycle_check_arr = {0, };
   }
   virtual ~warp_inst_t() {}
 
@@ -1155,6 +1174,10 @@ class warp_inst_t : public inst_t {
   unsigned get_schd_id() const { return m_scheduler_id; }
   active_mask_t get_warp_active_mask() const { return m_warp_active_mask; }
 
+  void check_cycle(unsigned long long cycle, int pos) {
+	m_cycle_check_arr[pos] = cycle;
+  }
+
  protected:
   unsigned m_uid;
   bool m_empty;
@@ -1193,9 +1216,11 @@ class warp_inst_t : public inst_t {
 
   unsigned m_scheduler_id;  // the scheduler that issues this inst
 
+  
   // Jin: cdp support
  public:
   int m_is_cdp;
+  mutable unsigned long long m_cycle_check_arr[MAX_CHECK_POS];
 };
 
 void move_warp(warp_inst_t *&dst, warp_inst_t *&src);

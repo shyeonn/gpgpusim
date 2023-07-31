@@ -72,6 +72,7 @@
 
 class gpgpu_context;
 
+
 enum exec_unit_type_t {
   NONE = 0,
   SP = 1,
@@ -1020,17 +1021,23 @@ struct insn_latency_info {
 struct ifetch_buffer_t {
   ifetch_buffer_t() { m_valid = false; }
 
-  ifetch_buffer_t(address_type pc, unsigned nbytes, unsigned warp_id) {
+  ifetch_buffer_t(address_type pc, unsigned nbytes, unsigned warp_id, 
+	  unsigned long long f_start, unsigned long long f_end) {
     m_valid = true;
     m_pc = pc;
     m_nbytes = nbytes;
     m_warp_id = warp_id;
+	fetch_start_cycle = f_start;
+	fetch_end_cycle = f_end;
   }
 
   bool m_valid;
   address_type m_pc;
   unsigned m_nbytes;
   unsigned m_warp_id;
+  unsigned long long fetch_start_cycle;
+  unsigned long long fetch_end_cycle;
+  
 };
 
 class shader_core_config;
@@ -2110,6 +2117,9 @@ class shader_core_ctx : public core_t {
     m_stats->n_simt_to_mem[m_sid] += n_flits;
   }
   bool check_if_non_released_reduction_barrier(warp_inst_t &inst);
+
+  unsigned long long get_cycle();
+
 
  protected:
   unsigned inactive_lanes_accesses_sfu(unsigned active_count, double latency) {

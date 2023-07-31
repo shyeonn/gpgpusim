@@ -838,7 +838,6 @@ const warp_inst_t *exec_shader_core_ctx::get_next_inst(unsigned warp_id,
   return m_gpu->gpgpu_ctx->ptx_fetch_inst(pc);
 }
 
-void exec_shader_core_ctx
 
 void exec_shader_core_ctx::get_pdom_stack_top_info(unsigned warp_id,
                                                    const warp_inst_t *pI,
@@ -852,12 +851,25 @@ const active_mask_t &exec_shader_core_ctx::get_active_mask(
   return m_simt_stack[warp_id]->get_active_mask();
 }
 
+
+unsigned long long shader_core_ctx::get_cycle() {
+  return m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle;
+}
+
 void shader_core_ctx::decode() {
   if (m_inst_fetch_buffer.m_valid) {
     // decode 1 or 2 instructions and place them into ibuffer
     address_type pc = m_inst_fetch_buffer.m_pc;
 	unsigned wid = m_inst_fetch_buffer.m_warp_id;
+	unsigned long long f_start_cycle =  m_inst_fetch_buffer.fetch_start_cycle;
+	unsigned long long f_end_cycle =  m_inst_fetch_buffer.fetch_end_cycle;
     const warp_inst_t *pI1 = get_next_inst(wid, pc);
+
+	//Cycle check
+	pI1->m_cycle_check_arr[p_fetch_start] = f_start_cycle;
+	pI1->m_cycle_check_arr[p_fetch_end] = f_end_cycle;
+	pI1->m_cycle_check_arr[p_decode] = get_cycle();
+
     m_warp[wid]->ibuffer_fill(0, pI1);
 	SHADER_DPRINTF(DECODE, "warp %d - Fill into I-Buffer(1) - pc : 0x%x\n", wid, pc);
     m_warp[wid]->inc_inst_in_pipeline();
@@ -871,6 +883,11 @@ void shader_core_ctx::decode() {
       const warp_inst_t *pI2 =
           get_next_inst(wid, pc + pI1->isize);
       if (pI2) {
+		//Cycle check
+		pI2->m_cycle_check_arr[p_fetch_start] = f_start_cycle;
+		pI2->m_cycle_check_arr[p_fetch_end] = f_end_cycle;
+		pI2->m_cycle_check_arr[p_decode] = get_cycle();
+
         m_warp[wid]->ibuffer_fill(1, pI2);
 		SHADER_DPRINTF(DECODE, "warp %d - Fill into I-Buffer(2) - pc : 0x%x\n",
 			wid, pc + pI1->isize);
@@ -897,8 +914,8 @@ void shader_core_ctx::fetch() {
 		  wid, m_warp[wid]->get_pc());
       m_warp[wid]->clear_imiss_pending();
       m_inst_fetch_buffer =
-          ifetch_buffer_t(m_warp[wid]->get_pc(),
-                          mf->get_access_size(), wid);
+          ifetch_buffer_t(m_warp[wid]->get_pc(), mf->get_access_size(), wid,
+			  mf->get_timestamp(), get_cycle());
 	  //Fetch unit -> I-Buffer
       assert(m_warp[wid]->get_pc() == (mf->get_addr() - PROGRAM_MEM_START));  
 	  // Verify that we got the instruction we were expecting.
@@ -980,7 +997,9 @@ void shader_core_ctx::fetch() {
 		    SHADER_DPRINTF(FETCH, "warp %d - L1 cache HIT - pc : 0x%x \n",
 				warp_id, pc);
             m_last_warp_fetched = warp_id;
-            m_inst_fetch_buffer = ifetch_buffer_t(pc, nbytes, warp_id);
+			unsigned long long cur_cycle = get_cycle();
+            m_inst_fetch_buffer = ifetch_buffer_t(pc, nbytes, warp_id,
+				cur_cycle, cur_cycle);
             m_warp[warp_id]->set_last_fetch(m_gpu->gpu_sim_cycle);
             delete mf;
           } else {
@@ -1195,8 +1214,9 @@ void scheduler_unit::cycle() {
            (checked < max_issue) && (checked <= issued) &&
            (issued < max_issue)) {
       const warp_inst_t *pI = warp(warp_id).ibuffer_next_inst();
+	  //pI->m_cycle_check_arr[issue_start] = 
       // Jin: handle cdp latency;
-      if (pI && pI->m_is_cdp && warp(warp_id).m_cdp_latency > 0) {
+      //if (pI && pI->m_is_cdp && warp(warp_id).m_cdp_latency > 0) {
         assert(warp(warp_id).m_cdp_dummy);
         warp(warp_id).m_cdp_latency--;
         break;
@@ -3456,8 +3476,6 @@ void shader_core_ctx::cycle() {
   writeback();
   DPRINTF_NOCYCLE("-------------execute-------------\n");
   execute();
-  //SHADER_DPRINTF("--------read_operands--------\n");
-  //read_operands();
   DPRINTF_NOCYCLE("-------------issue-------------\n");
   issue();
   for (int i = 0; i < m_config->inst_fetch_throughput; ++i) {
