@@ -935,7 +935,6 @@ void shader_core_ctx::fetch() {
         if (m_warp[warp_id]->hardware_done() &&
             !m_scoreboard->pendingWrites(warp_id) &&
             !m_warp[warp_id]->done_exit()) {
-		  printf("warp fin\n");
           bool did_exit = false;
           for (unsigned t = 0; t < m_config->warp_size; t++) {
             unsigned tid = warp_id * m_config->warp_size + t;
@@ -1165,6 +1164,11 @@ void scheduler_unit::order_by_priority(
   }
 }
 
+unsigned long long scheduler_unit::get_cycle() {
+  return m_shader->get_gpu()->gpu_sim_cycle +
+	m_shader->get_gpu()->gpu_tot_sim_cycle;
+}
+
 void scheduler_unit::cycle() {
   bool valid_inst =
       false;  // there was one warp with a valid instruction to issue (didn't
@@ -1214,9 +1218,9 @@ void scheduler_unit::cycle() {
            (checked < max_issue) && (checked <= issued) &&
            (issued < max_issue)) {
       const warp_inst_t *pI = warp(warp_id).ibuffer_next_inst();
-	  //pI->m_cycle_check_arr[issue_start] = 
+	  
       // Jin: handle cdp latency;
-      //if (pI && pI->m_is_cdp && warp(warp_id).m_cdp_latency > 0) {
+      if (pI && pI->m_is_cdp && warp(warp_id).m_cdp_latency > 0) {
         assert(warp(warp_id).m_cdp_dummy);
         warp(warp_id).m_cdp_latency--;
         break;
@@ -1252,6 +1256,9 @@ void scheduler_unit::cycle() {
             ready_inst = true;
             SCHED_DPRINTF(
                 "Warp passes scoreboard\n");
+
+			//Cycle checker
+			pI->m_cycle_check_arr[p_issue_end] = get_cycle();
 
             const active_mask_t &active_mask =
                 m_shader->get_active_mask(warp_id, pI);
@@ -1728,6 +1735,7 @@ void shader_core_ctx::execute() {
   }
   for (unsigned n = 0; n < m_num_function_units; n++) {
     unsigned multiplier = m_fu[n]->clock_multiplier();
+	//m_fu order is sp before mem, opnd is delayed by one cycle at sp unit
     for (unsigned c = 0; c < multiplier; c++) m_fu[n]->cycle();
 	//For power model
 	m_fu[n]->active_lanes_in_pipeline();
@@ -1781,11 +1789,11 @@ void ldst_unit::get_L1T_sub_stats(struct cache_sub_stats &css) const {
 }
 
 void shader_core_ctx::warp_inst_complete(const warp_inst_t &inst) {
-#if 1
-      printf("[warp_inst_complete] uid=%u core=%u warp=%u pc=%#x @ time=%llu \n"
-		  , inst.get_uid(), m_sid, inst.warp_id(), inst.pc,  
+	inst.m_cycle_check_arr[p_complete] = get_cycle();
+	inst.file_out(m_sid);
+DPRINTF_NOCYCLE("[warp_inst_complete] uid=%u core=%u warp=%u pc=%#x @ \
+	time=%llu \n", inst.get_uid(), m_sid, inst.warp_id(), inst.pc,  
 		  m_gpu->gpu_tot_sim_cycle +  m_gpu->gpu_sim_cycle);
-#endif
 
   if (inst.op_pipe == SP__OP)
     m_stats->m_num_sp_committed[m_sid]++;
@@ -1837,6 +1845,7 @@ void shader_core_ctx::writeback() {
      */
 
 	SHADER_DPRINTF(WRITEBACK, "Writeback : PC 0x%x\n", pipe_reg->pc);
+	pipe_reg->m_cycle_check_arr[p_writeback] = get_cycle();
     m_operand_collector.writeback(*pipe_reg);
     unsigned warp_id = pipe_reg->warp_id();
     m_scoreboard->releaseRegisters(pipe_reg);
@@ -1894,7 +1903,7 @@ mem_stage_stall_type ldst_unit::process_cache_access(
       for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++){
         if (inst.out[r] > 0) {
 		  m_pending_writes[inst.warp_id()][inst.out[r]]--;
-		  printf("Pending writes decreased by Cache hit in process_memory_access_queue - warp_id : %u, reg_id %u\n", inst.warp_id(), inst.out[r]);
+		  //printf("Pending writes decreased by Cache hit in process_memory_access_queue - warp_id : %u, reg_id %u\n", inst.warp_id(), inst.out[r]);
 		}
 	  }
     }
@@ -2020,7 +2029,7 @@ void ldst_unit::L1_latency_queue_cycle() {
               unsigned still_pending =
                   --m_pending_writes[mf_next->get_inst().warp_id()]
                                     [mf_next->get_inst().out[r]];
-			  printf("Pending writes decrease by Cache hit in L1_latency_queue_cycle\n");
+			  //printf("Pending writes decrease by Cache hit in L1_latency_queue_cycle\n");
               if (!still_pending) {
                 m_pending_writes[mf_next->get_inst().warp_id()].erase(
                     mf_next->get_inst().out[r]);
@@ -2078,7 +2087,7 @@ bool ldst_unit::constant_cycle(warp_inst_t &inst, mem_stage_stall_type &rc_fail,
     if (inst.is_load()) {
       for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++){
         if (inst.out[r] > 0) m_pending_writes[inst.warp_id()][inst.out[r]]--;
-		printf("Pending writes decrease by Cache hit in constant_cycle\n");
+		//printf("Pending writes decrease by Cache hit in constant_cycle\n");
 	  }
     }
   } else {
@@ -2367,6 +2376,8 @@ pipelined_simd_unit::pipelined_simd_unit(register_set *result_port,
 void pipelined_simd_unit::cycle() {
   if (!m_pipeline_reg[0]->empty()) {
 	FU_DPRINTF("Move to result_port - PC:0x%x\n",m_pipeline_reg[0]->pc);
+	m_pipeline_reg[0]->m_cycle_check_arr[p_fu_end] = get_cycle();
+	//EX->WB
     m_result_port->move_in(m_pipeline_reg[0]);
     assert(active_insts_in_pipeline > 0);
     active_insts_in_pipeline--;
@@ -2389,12 +2400,21 @@ void pipelined_simd_unit::cycle() {
   occupied >>= 1;
 }
 
+unsigned long long pipelined_simd_unit::get_cycle() {
+  return m_core->get_cycle();
+}
+
+
 void pipelined_simd_unit::issue(register_set &source_reg) {
   // move_warp(m_dispatch_reg,source_reg);
   warp_inst_t **ready_reg = source_reg.get_ready();
   m_core->incexecstat((*ready_reg));
   // source_reg.move_out_to(m_dispatch_reg);
+  
+  //Move source_reg to m_dispatch_reg
   simd_function_unit::issue(source_reg);
+  m_dispatch_reg->m_cycle_check_arr[p_fu_start] = get_cycle();
+
   FU_DPRINTF("Move to m_dispatch_reg (latency:%d) - PC:0x%x\n",
 	  m_dispatch_reg->latency, m_dispatch_reg->pc);
 }
@@ -2498,7 +2518,7 @@ void ldst_unit::issue(register_set &reg_set) {
       unsigned reg_id = inst->out[r];
       if (reg_id > 0) {
         m_pending_writes[warp_id][reg_id] += n_accesses;
-		printf("Pending writes increased - warp_id : %u, reg_id : %u, val : %u\n", warp_id, reg_id, m_pending_writes[warp_id][reg_id]);
+		//printf("Pending writes increased - warp_id : %u, reg_id : %u, val : %u\n", warp_id, reg_id, m_pending_writes[warp_id][reg_id]);
       }
     }
   }
@@ -2513,8 +2533,9 @@ void ldst_unit::issue(register_set &reg_set) {
 void ldst_unit::writeback() {
   // process next instruction that is going to writeback
   if (!m_next_wb.empty()) {
-	  LDST_DPRINTF("Writeback\n");
+	  LDST_DPRINTF("Writeback in ldst\n");
     if (m_operand_collector->writeback(m_next_wb)) {
+	  m_next_wb.m_cycle_check_arr[p_writeback] = get_cycle();	
       bool insn_completed = false;
       for (unsigned r = 0; r < MAX_OUTPUT_VALUES; r++) {
         if (m_next_wb.out[r] > 0) {
@@ -2609,6 +2630,8 @@ void ldst_unit::writeback() {
         abort();
     }
   }
+  if(!m_next_wb.empty())
+	m_next_wb.m_cycle_check_arr[p_fu_end] = get_cycle();
   // update arbitration priority only if:
   // 1. the writeback buffer was available
   // 2. a client was serviced
@@ -2712,6 +2735,7 @@ void ldst_unit::cycle() {
         }
       }
     }
+	m_dispatch_reg->m_cycle_check_arr[p_fu_end] = get_cycle();
   }
 
   m_L1T->cycle();
@@ -2787,6 +2811,7 @@ void ldst_unit::cycle() {
 	  LDST_DPRINTF("Warp %d - Stores exit pipeline\n", warp_id);
 	  // stores exit pipeline here
       m_core->dec_inst_in_pipeline(warp_id);
+	  m_dispatch_reg->m_cycle_check_arr[p_fu_end] = get_cycle();
       m_core->warp_inst_complete(*m_dispatch_reg);
       m_dispatch_reg->clear();
     }
@@ -3061,6 +3086,27 @@ void gpgpu_sim::shader_print_l1_miss_stat(FILE *fout) const {
   }
   fprintf(fout, "\n");
   */
+}
+
+void warp_inst_t::file_out(unsigned sid) const {
+	std::string file_path = "cycle_output.txt";
+
+    std::ofstream outputFile(file_path, std::ios::out | std::ios::app);
+
+    if (!outputFile) {
+        std::cout << "Cannot open File" << std::endl;
+    }
+
+
+	outputFile <<  sid << " " << m_warp_id << " "; 
+	outputFile <<  std::hex << pc << " ";
+
+    for (int i = 0; i < MAX_CHECK_POS; ++i) {
+        outputFile << std::dec << m_cycle_check_arr[i] << " ";
+    }
+	outputFile << std::endl;
+
+    outputFile.close();
 }
 
 void warp_inst_t::print(FILE *fout) const {
@@ -4083,6 +4129,8 @@ void opndcoll_rfu_t::dispatch_ready_cu() {
       }
 	  OP_DPRINTF("Dispatch Inst(PC:0x%x) from OC to [%s]\n",
 		  cu->get_pc(), cu->get_output_name());
+	  //Cycle checker
+	  cu->get_warp()->m_cycle_check_arr[p_opnd_end] = get_cycle();
       cu->dispatch();
     }
   }
@@ -4111,6 +4159,8 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
             m_arbiter.add_read_requests(cu);
 			OP_DPRINTF("Allocated inst PC : %#x - warp : %d\n", 
 				cu->get_pc(), cu->get_warp_id());
+			//Cycle checker
+			cu->get_warp()->m_cycle_check_arr[p_opnd_start] = get_cycle();
             break;
           }
         }
@@ -4162,6 +4212,11 @@ void opndcoll_rfu_t::allocate_reads() {
           m_shader->get_config()->warp_size);  // op.get_active_count());
     }
   }
+}
+
+unsigned long long opndcoll_rfu_t::get_cycle() {
+   return shader_core()->get_gpu()->gpu_sim_cycle +
+   shader_core()->get_gpu()->gpu_tot_sim_cycle;
 }
 
 bool opndcoll_rfu_t::collector_unit_t::ready() const {
@@ -4237,6 +4292,7 @@ void opndcoll_rfu_t::collector_unit_t::dispatch() {
   m_output_register = NULL;
   for (unsigned i = 0; i < MAX_REG_OPERANDS * 2; i++) m_src_op[i].reset();
 }
+
 
 void exec_simt_core_cluster::create_shader_core_ctx() {
   m_core = new shader_core_ctx *[m_config->n_simt_cores_per_cluster];
@@ -4436,8 +4492,8 @@ void simt_core_cluster::icnt_inject_request_packet(class mem_fetch *mf) {
   mf->set_status(IN_ICNT_TO_MEM,
                  m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle);
   //PUSH to icnt
-  printf("Push to ldst->icnt - Addr : %#x, Dest : %u\n", mf->get_addr(),
-	  destination);
+  //printf("Push to ldst->icnt - Addr : %#x, Dest : %u\n", mf->get_addr(),
+	  //destination);
   if (!mf->get_is_write() && !mf->isatomic())
     ::icnt_push(m_cluster_id, m_config->mem2device(destination), (void *)mf,
                 mf->get_ctrl_size());

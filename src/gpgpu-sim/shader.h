@@ -394,6 +394,8 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
 
   int get_schd_id() const { return m_id; }
 
+  unsigned long long get_cycle();
+
  protected:
   virtual void do_on_warp_issued(
       unsigned warp_id, unsigned num_issued,
@@ -596,6 +598,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   }
 
   shader_core_ctx *shader_core() { return m_shader; }
+
+  unsigned long long get_cycle();
 
  private:
   void process_banks() { m_arbiter.reset_alloction(); }
@@ -872,6 +876,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     const op_t *get_operands() const { return m_src_op; }
     void dump(FILE *fp, const shader_core_ctx *shader) const;
 
+	warp_inst_t *get_warp() { return m_warp; }
     unsigned get_warp_id() const { return m_warp_id; }
     unsigned get_active_count() const { return m_warp->active_count(); }
     const active_mask_t &get_active_mask() const {
@@ -1108,6 +1113,7 @@ class pipelined_simd_unit : public simd_function_unit {
       }
     }
   }
+  virtual unsigned long long get_cycle();
 
  protected:
   unsigned m_pipeline_depth;

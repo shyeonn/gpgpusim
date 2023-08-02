@@ -47,14 +47,13 @@ enum cycle_check_pos {
   p_fetch_start = 0,
   p_fetch_end,
   p_decode,
-  p_issue_start,
-  issue_end,
-  opnd_start,
-  opnd_end,
-  fu_issue,
-  fu_start,
-  fu_end,
-  writeback,
+  p_issue,
+  p_opnd_start,
+  p_opnd_end,
+  p_fu_start,
+  p_fu_end,
+  p_writeback,
+  p_complete,
 
   MAX_CHECK_POS
 }; 
@@ -1117,6 +1116,7 @@ class warp_inst_t : public inst_t {
   void set_not_active(unsigned lane_id);
 
   // accessors
+  void file_out(unsigned sid) const;
   virtual void print_insn(FILE *fp) const {
     fprintf(fp, " [inst @ pc=0x%04x] ", pc);
     for (int i = (int)m_config->warp_size - 1; i >= 0; i--)
@@ -1174,9 +1174,6 @@ class warp_inst_t : public inst_t {
   unsigned get_schd_id() const { return m_scheduler_id; }
   active_mask_t get_warp_active_mask() const { return m_warp_active_mask; }
 
-  void check_cycle(unsigned long long cycle, int pos) {
-	m_cycle_check_arr[pos] = cycle;
-  }
 
  protected:
   unsigned m_uid;

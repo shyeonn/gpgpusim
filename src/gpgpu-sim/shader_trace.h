@@ -46,9 +46,9 @@
   (DTRACE(x) &&          \
    (Trace::sampling_core == shader_core()->get_sid() || Trace::sampling_core == -1))
 
-#define DPRINTF_NOCYCLE(...)                                \
+#define DPRINTF_NOCYCLE(...)                                  \
   do {                                                        \
-    if (Trace::sampling_core == get_sid() || Trace::sampling_core == -1){\
+    if (SHADER_DTRACE(BASE)){                          \
       printf(__VA_ARGS__);                                    \
     }                                                         \
   } while (0)
