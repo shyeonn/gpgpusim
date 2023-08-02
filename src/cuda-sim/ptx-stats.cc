@@ -126,7 +126,7 @@ static ptx_file_line_stats_map_t ptx_file_line_stats_tracker;
 // output statistics to a file
 void ptx_stats::ptx_file_line_stats_write_file() {
   // check if stat collection is turned on
-  if (enable_ptx_file_line_stats == 0) return;
+  //if (enable_ptx_file_line_stats == 0) return;
 
   ptx_file_line_stats_map_t::iterator it;
   FILE *pfile;

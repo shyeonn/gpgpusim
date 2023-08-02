@@ -72,6 +72,7 @@
 
 class gpgpu_context;
 
+
 enum exec_unit_type_t {
   NONE = 0,
   SP = 1,
@@ -393,6 +394,8 @@ class scheduler_unit {  // this can be copied freely, so can be used in std
 
   int get_schd_id() const { return m_id; }
 
+  unsigned long long get_cycle();
+
  protected:
   virtual void do_on_warp_issued(
       unsigned warp_id, unsigned num_issued,
@@ -595,6 +598,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
   }
 
   shader_core_ctx *shader_core() { return m_shader; }
+
+  unsigned long long get_cycle();
 
  private:
   void process_banks() { m_arbiter.reset_alloction(); }
@@ -871,6 +876,7 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     const op_t *get_operands() const { return m_src_op; }
     void dump(FILE *fp, const shader_core_ctx *shader) const;
 
+	warp_inst_t *get_warp() { return m_warp; }
     unsigned get_warp_id() const { return m_warp_id; }
     unsigned get_active_count() const { return m_warp->active_count(); }
     const active_mask_t &get_active_mask() const {
@@ -878,6 +884,8 @@ class opndcoll_rfu_t {  // operand collector based register file unit
     }
     unsigned get_sp_op() const { return m_warp->sp_op; }
     unsigned get_id() const { return m_cuid; }  // returns CU hw id
+	unsigned get_pc() const { return m_warp->pc; }
+	const char *get_output_name() { return m_output_register->get_name(); }
 
     // modifiers
     void init(unsigned n, unsigned num_banks, unsigned log2_warp_size,
@@ -1018,17 +1026,23 @@ struct insn_latency_info {
 struct ifetch_buffer_t {
   ifetch_buffer_t() { m_valid = false; }
 
-  ifetch_buffer_t(address_type pc, unsigned nbytes, unsigned warp_id) {
+  ifetch_buffer_t(address_type pc, unsigned nbytes, unsigned warp_id, 
+	  unsigned long long f_start, unsigned long long f_end) {
     m_valid = true;
     m_pc = pc;
     m_nbytes = nbytes;
     m_warp_id = warp_id;
+	fetch_start_cycle = f_start;
+	fetch_end_cycle = f_end;
   }
 
   bool m_valid;
   address_type m_pc;
   unsigned m_nbytes;
   unsigned m_warp_id;
+  unsigned long long fetch_start_cycle;
+  unsigned long long fetch_end_cycle;
+  
 };
 
 class shader_core_config;
@@ -1043,10 +1057,9 @@ class simd_function_unit {
     source_reg.move_out_to(m_dispatch_reg);
     occupied.set(m_dispatch_reg->latency);
   }
-  virtual void cycle() = 0;
-  virtual void active_lanes_in_pipeline() = 0;
-
-  // accessors
+  virtual void cycle() = 0; 
+  virtual void active_lanes_in_pipeline() = 0; 
+  // accessors 
   virtual unsigned clock_multiplier() const { return 1; }
   virtual bool can_issue(const warp_inst_t &inst) const {
     return m_dispatch_reg->empty() && !occupied.test(inst.latency);
@@ -1100,6 +1113,7 @@ class pipelined_simd_unit : public simd_function_unit {
       }
     }
   }
+  virtual unsigned long long get_cycle();
 
  protected:
   unsigned m_pipeline_depth;
@@ -2110,6 +2124,9 @@ class shader_core_ctx : public core_t {
   }
   bool check_if_non_released_reduction_barrier(warp_inst_t &inst);
 
+  unsigned long long get_cycle();
+
+
  protected:
   unsigned inactive_lanes_accesses_sfu(unsigned active_count, double latency) {
     return (((32 - active_count) >> 1) * latency) +
@@ -2320,6 +2337,7 @@ class simt_core_cluster {
   }
   void push_response_fifo(class mem_fetch *mf) {
     m_response_fifo.push_back(mf);
+	//mf->print(stdout);
   }
 
   void get_pdom_stack_top_info(unsigned sid, unsigned tid, unsigned *pc,

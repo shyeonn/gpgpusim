@@ -42,6 +42,22 @@ class gpgpu_context;
 #define MAX_INPUT_VALUES 24
 #define MAX_OUTPUT_VALUES 8
 
+
+enum cycle_check_pos {
+  p_fetch_start = 0,
+  p_fetch_end,
+  p_decode,
+  p_issue,
+  p_opnd_start,
+  p_opnd_end,
+  p_fu_start,
+  p_fu_end,
+  p_writeback,
+  p_complete,
+
+  MAX_CHECK_POS
+}; 
+
 enum _memory_space_t {
   undefined_space = 0,
   reg_space,
@@ -998,6 +1014,7 @@ class warp_inst_t : public inst_t {
     m_uid = 0;
     m_empty = true;
     m_config = NULL;
+	m_cycle_check_arr = {0, };
   }
   warp_inst_t(const core_config *config) {
     m_uid = 0;
@@ -1011,6 +1028,7 @@ class warp_inst_t : public inst_t {
     m_is_printf = false;
     m_is_cdp = 0;
     should_do_atomic = true;
+	m_cycle_check_arr = {0, };
   }
   virtual ~warp_inst_t() {}
 
@@ -1098,6 +1116,7 @@ class warp_inst_t : public inst_t {
   void set_not_active(unsigned lane_id);
 
   // accessors
+  void file_out(unsigned sid) const;
   virtual void print_insn(FILE *fp) const {
     fprintf(fp, " [inst @ pc=0x%04x] ", pc);
     for (int i = (int)m_config->warp_size - 1; i >= 0; i--)
@@ -1147,10 +1166,14 @@ class warp_inst_t : public inst_t {
 
   bool has_dispatch_delay() { return cycles > 0; }
 
+  unsigned long long dispatch_cycle() {return cycles;}
+  
+
   void print(FILE *fout) const;
   unsigned get_uid() const { return m_uid; }
   unsigned get_schd_id() const { return m_scheduler_id; }
   active_mask_t get_warp_active_mask() const { return m_warp_active_mask; }
+
 
  protected:
   unsigned m_uid;
@@ -1190,9 +1213,11 @@ class warp_inst_t : public inst_t {
 
   unsigned m_scheduler_id;  // the scheduler that issues this inst
 
+  
   // Jin: cdp support
  public:
   int m_is_cdp;
+  mutable unsigned long long m_cycle_check_arr[MAX_CHECK_POS];
 };
 
 void move_warp(warp_inst_t *&dst, warp_inst_t *&src);
@@ -1350,6 +1375,10 @@ class register_set {
       regs[i]->print(fp);
       fprintf(fp, "\n");
     }
+  }
+
+  const char *get_name(){
+	return m_name;
   }
 
   warp_inst_t **get_free() {

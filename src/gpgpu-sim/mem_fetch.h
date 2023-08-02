@@ -102,7 +102,7 @@ class mem_fetch {
 
   void set_return_timestamp(unsigned t) { m_timestamp2 = t; }
   void set_icnt_receive_time(unsigned t) { m_icnt_receive_time = t; }
-  unsigned get_timestamp() const { return m_timestamp; }
+  unsigned long long get_timestamp() const { return m_timestamp; }
   unsigned get_return_timestamp() const { return m_timestamp2; }
   unsigned get_icnt_receive_time() const { return m_icnt_receive_time; }
 
@@ -127,6 +127,7 @@ class mem_fetch {
 
   mem_fetch *get_original_mf() { return original_mf; }
   mem_fetch *get_original_wr_mf() { return original_wr_mf; }
+
 
  private:
   // request source information
@@ -153,7 +154,7 @@ class mem_fetch {
   enum mf_type m_type;
 
   // statistics
-  unsigned
+  unsigned long long
       m_timestamp;  // set to gpu_sim_cycle+gpu_tot_sim_cycle at struct creation
   unsigned m_timestamp2;  // set to gpu_sim_cycle+gpu_tot_sim_cycle when pushed
                           // onto icnt to shader; only used for reads

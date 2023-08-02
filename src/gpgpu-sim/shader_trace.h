@@ -39,6 +39,19 @@
 #define SHADER_DTRACE(x) \
   (DTRACE(x) &&          \
    (Trace::sampling_core == get_sid() || Trace::sampling_core == -1))
+#define FU_DTRACE(x) \
+  (DTRACE(x) &&          \
+   (Trace::sampling_core == m_core->get_sid() || Trace::sampling_core == -1))
+#define OP_DTRACE(x) \
+  (DTRACE(x) &&          \
+   (Trace::sampling_core == shader_core()->get_sid() || Trace::sampling_core == -1))
+
+#define DPRINTF_NOCYCLE(...)                                  \
+  do {                                                        \
+    if (SHADER_DTRACE(BASE)){                          \
+      printf(__VA_ARGS__);                                    \
+    }                                                         \
+  } while (0)
 
 // Intended to be called from inside components of a shader core.
 // Depends on a get_sid() function
@@ -51,6 +64,17 @@
       printf(__VA_ARGS__);                                    \
     }                                                         \
   } while (0)
+
+#define CACHE_DPRINTF(x, ...)                                \
+  do {                                                        \
+    if (SHADER_DTRACE(x)) {                                   \
+      printf(SHADER_PRINT_STR,                                \
+             m_gpu->gpu_sim_cycle + m_gpu->gpu_tot_sim_cycle, \
+             Trace::trace_streams_str[Trace::x], get_sid());  \
+      printf(__VA_ARGS__);                                    \
+    }                                                         \
+  } while (0)
+
 
 // Intended to be called from inside a scheduler_unit.
 // Depends on a m_id member
@@ -66,7 +90,48 @@
     }                                                                    \
   } while (0)
 
+// Intended to be called from inside components of a function unit.
+#define FU_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (FU_DTRACE(FUNCTION_UNIT)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             m_core->get_gpu()->gpu_sim_cycle +                        \
+                 m_core->get_gpu()->gpu_tot_sim_cycle,                 \
+              Trace::trace_streams_str[Trace::FUNCTION_UNIT], m_core->get_sid() \
+             );                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
+
+// Intended to be called from inside components of a function unit.
+#define LDST_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (FU_DTRACE(LDST)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             m_core->get_gpu()->gpu_sim_cycle +                        \
+                 m_core->get_gpu()->gpu_tot_sim_cycle,                 \
+              Trace::trace_streams_str[Trace::LDST], m_core->get_sid() \
+             );                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
+
+
+// Intended to be called from inside components of a Operand collector.
+#define OP_DPRINTF(...)                                               \
+  do {                                                                   \
+    if (OP_DTRACE(OPNDCOLL)) {                                 \
+      printf(SHADER_PRINT_STR,                                            \
+             shader_core()->get_gpu()->gpu_sim_cycle +                        \
+                 shader_core()->get_gpu()->gpu_tot_sim_cycle,                 \
+             Trace::trace_streams_str[Trace::OPNDCOLL], \
+		     shader_core()->get_sid() \
+             );                                                      \
+      printf(__VA_ARGS__);                                               \
+    }                                                                    \
+  } while (0)
 #else
+
 
 #define SHADER_DTRACE(x) (false)
 #define SHADER_DPRINTF(x, ...) \
