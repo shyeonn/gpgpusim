@@ -1185,8 +1185,6 @@ void scheduler_unit::cycle() {
     if ((*iter) == NULL || (*iter)->done_exit()) {
       continue;
     }
-//    SCHED_DPRINTF("Testing (warp_id %u, dynamic_warp_id %u)\n",
-//               (*iter)->get_warp_id(), (*iter)->get_dynamic_warp_id());
     unsigned warp_id = (*iter)->get_warp_id();
     unsigned checked = 0;
     unsigned issued = 0;
@@ -2562,7 +2560,6 @@ void ldst_unit::writeback() {
       m_next_wb.clear();
       m_last_inst_gpu_sim_cycle = m_core->get_gpu()->gpu_sim_cycle;
       m_last_inst_gpu_tot_sim_cycle = m_core->get_gpu()->gpu_tot_sim_cycle;
-	  LDST_DPRINTF("Writeback Finish\n");
     }
   }
 
