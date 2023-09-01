@@ -193,6 +193,7 @@ class shd_warp_t {
   void ibuffer_flush() {
     for (unsigned i = 0; i < IBUFFER_SIZE; i++) {
       if (m_ibuffer[i].m_valid) dec_inst_in_pipeline();
+	  if(m_ibuffer[i].m_valid == true) delete m_ibuffer[i].m_inst;
       m_ibuffer[i].m_inst = NULL;
       m_ibuffer[i].m_valid = false;
     }
