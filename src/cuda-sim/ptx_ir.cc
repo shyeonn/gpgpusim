@@ -1461,21 +1461,31 @@ void ptx_instruction::print_insn(FILE *fp) const {
   fprintf(fp, "%s", to_string().c_str());
 }
 
+
+#define IS_SIMPLE 1
+
 std::string ptx_instruction::to_string() const {
   char buf[STR_SIZE];
   unsigned used_bytes = 0;
-  if (!is_label()) {
-    used_bytes +=
-        snprintf(buf + used_bytes, STR_SIZE - used_bytes, " PC=0x%03x ", m_PC);
-  } else {
-    used_bytes +=
-        snprintf(buf + used_bytes, STR_SIZE - used_bytes, "                ");
+  if (!IS_SIMPLE) {
+	if (!is_label()) {
+	  used_bytes +=
+		  snprintf(buf + used_bytes, STR_SIZE - used_bytes, " PC=0x%03x ", m_PC);
+	} else {
+	  used_bytes +=
+		  snprintf(buf + used_bytes, STR_SIZE - used_bytes, "                ");
+	}
+	used_bytes +=
+		snprintf(buf + used_bytes, STR_SIZE - used_bytes, "(%s:%d) %s",
+				 m_source_file.c_str(), m_source_line, m_source.c_str());
   }
+  else {
   used_bytes +=
-      snprintf(buf + used_bytes, STR_SIZE - used_bytes, "(%s:%d) %s",
-               m_source_file.c_str(), m_source_line, m_source.c_str());
+      snprintf(buf + used_bytes, STR_SIZE - used_bytes, "%s", m_source.c_str());
+  }
   return std::string(buf);
 }
+
 operand_info ptx_instruction::get_pred() const {
   return operand_info(m_pred, gpgpu_ctx);
 }
