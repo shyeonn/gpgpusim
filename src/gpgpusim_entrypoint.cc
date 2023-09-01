@@ -197,6 +197,7 @@ void gpgpu_context::exit_simulation() {
 gpgpu_sim *gpgpu_context::gpgpu_ptx_sim_init_perf() {
   srand(1);
   print_splash();
+  remove_cycle_result();
   func_sim->read_sim_environment_variables();
   ptx_parser->read_parser_environment_variables();
   option_parser_t opp = option_parser_create();
