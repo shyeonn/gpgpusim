@@ -42,7 +42,6 @@ class gpgpu_context;
 #define MAX_INPUT_VALUES 24
 #define MAX_OUTPUT_VALUES 8
 
-
 enum cycle_check_pos {
   p_fetch_start = 0,
   p_fetch_end,
@@ -51,12 +50,21 @@ enum cycle_check_pos {
   p_opnd_start,
   p_opnd_end,
   p_fu_start,
+  p_mem_accessq,
   p_fu_end,
   p_writeback,
   p_complete,
+  
 
   MAX_CHECK_POS
 }; 
+
+enum miss_check_pos {
+  p_L1D = 0,
+  p_L2,
+
+  MAX_CACHE_POS
+};
 
 enum _memory_space_t {
   undefined_space = 0,
@@ -1015,6 +1023,7 @@ class warp_inst_t : public inst_t {
     m_empty = true;
     m_config = NULL;
 	m_cycle_check_arr = {0, };
+	m_miss_check_arr = {0, };
   }
   warp_inst_t(const core_config *config) {
     m_uid = 0;
@@ -1029,6 +1038,7 @@ class warp_inst_t : public inst_t {
     m_is_cdp = 0;
     should_do_atomic = true;
 	m_cycle_check_arr = {0, };
+	m_miss_check_arr = {0, };
   }
   virtual ~warp_inst_t() {}
 
@@ -1218,6 +1228,7 @@ class warp_inst_t : public inst_t {
  public:
   int m_is_cdp;
   mutable unsigned long long m_cycle_check_arr[MAX_CHECK_POS];
+  mutable bool m_miss_check_arr[MAX_CACHE_POS];
 };
 
 void move_warp(warp_inst_t *&dst, warp_inst_t *&src);

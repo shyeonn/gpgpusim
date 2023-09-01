@@ -2163,6 +2163,21 @@ void print_splash() {
   }
 }
 
+void remove_cycle_result() {
+    const char* filename = "cycle_output.txt"; 
+
+    if (std::FILE* file = std::fopen(filename, "r")) {
+        std::fclose(file); 
+        if (std::remove(filename) != 0) {
+            perror("GPGPU-Sim: Error deleting file");
+        } else {
+            printf("GPGPU-Sim: File successfully deleted\n");
+        }
+    } else {
+        printf("GPGPU-Sim: File not found, nothing to do\n");
+    }
+}
+
 void cuda_sim::gpgpu_ptx_sim_register_const_variable(void *hostVar,
                                                      const char *deviceName,
                                                      size_t size) {

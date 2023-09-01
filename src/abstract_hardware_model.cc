@@ -524,7 +524,6 @@ void warp_inst_t::memory_coalescing_arch(bool is_write,
 
       assert(num_accesses <= MAX_ACCESSES_PER_INSN_PER_THREAD);
 
-      //            for(unsigned access=0; access<num_accesses; access++) {
       for (unsigned access = 0;
            (access < MAX_ACCESSES_PER_INSN_PER_THREAD) &&
            (m_per_scalar_thread[thread].memreqaddr[access] != 0);
