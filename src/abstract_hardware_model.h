@@ -59,11 +59,12 @@ enum cycle_check_pos {
   MAX_CHECK_POS
 }; 
 
-enum miss_check_pos {
+enum stall_check_pos {
   p_L1D = 0,
   p_L2,
+  p_pipe_reg_full,
 
-  MAX_CACHE_POS
+  MAX_STALL_POS
 };
 
 enum _memory_space_t {
@@ -1023,7 +1024,7 @@ class warp_inst_t : public inst_t {
     m_empty = true;
     m_config = NULL;
 	m_cycle_check_arr = {0, };
-	m_miss_check_arr = {0, };
+	m_stall_check_arr = {0, };
   }
   warp_inst_t(const core_config *config) {
     m_uid = 0;
@@ -1038,7 +1039,7 @@ class warp_inst_t : public inst_t {
     m_is_cdp = 0;
     should_do_atomic = true;
 	m_cycle_check_arr = {0, };
-	m_miss_check_arr = {0, };
+	m_stall_check_arr = {0, };
   }
   virtual ~warp_inst_t() {}
 
@@ -1228,7 +1229,7 @@ class warp_inst_t : public inst_t {
  public:
   int m_is_cdp;
   mutable unsigned long long m_cycle_check_arr[MAX_CHECK_POS];
-  mutable bool m_miss_check_arr[MAX_CACHE_POS];
+  mutable bool m_stall_check_arr[MAX_STALL_POS];
 };
 
 void move_warp(warp_inst_t *&dst, warp_inst_t *&src);

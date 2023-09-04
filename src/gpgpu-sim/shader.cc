@@ -1445,8 +1445,14 @@ void scheduler_unit::cycle() {
                   previous_issued_inst_exec_type =
                       exec_unit_type_t::SPECIALIZED;
                 }
+				else 
+				  SCHED_DPRINTF("Spec_pipe_reg is not avalible - warp_id : %d\n", warp_id);
               }
-
+			  if(!(sp_pipe_avail && sfu_pipe_avail && tensor_core_pipe_avail 
+				  && dp_pipe_avail && int_pipe_avail)) {
+				  SCHED_DPRINTF("Pipe_reg is not available - warp_id : %d\n", warp_id);
+				  pI->m_stall_check_arr[p_pipe_reg_full] = true;
+			  }
             }  // end of else
           } else {
             SCHED_DPRINTF(
@@ -2088,7 +2094,7 @@ void ldst_unit::L1_latency_queue_cycle() {
 		LDST_DPRINTF("L1D RESERVATION_FAIL - Addr : %#x\n", mf_next->get_addr());
       } else {
         assert(status == MISS || status == HIT_RESERVED);
-		mf_next->get_inst().m_miss_check_arr[p_L1D] = true;
+		mf_next->get_inst().m_stall_check_arr[p_L1D] = true;
 		LDST_DPRINTF("L1D MISS - Addr : %#x\n", mf_next->get_addr());
         l1_latency_queue[j][0] = NULL;
       }
@@ -3140,6 +3146,10 @@ void warp_inst_t::file_out(unsigned sid) const {
         outputFile << std::dec << m_cycle_check_arr[i] <<  " ";
     }
 
+    for (int i = 0; i < MAX_STALL_POS; ++i) {
+        outputFile << std::dec << m_stall_check_arr[i] <<  " ";
+    }
+
 	outputFile << latency << " ";
 
 	outputFile << outcount << " ";
@@ -3152,9 +3162,6 @@ void warp_inst_t::file_out(unsigned sid) const {
 	  outputFile << in[i] << " ";
 	}
 
-    for (int i = 0; i < MAX_CACHE_POS; ++i) {
-        outputFile << std::dec << m_miss_check_arr[i] <<  " ";
-    }
 
 	outputFile << m_config->gpgpu_ctx->func_sim->ptx_get_insn_str(pc);
 
@@ -4217,6 +4224,8 @@ void opndcoll_rfu_t::allocate_cu(unsigned port_num) {
           }
         }
         if (allocated) break;  // cu has been allocated, no need to search more.
+		else 
+			OP_DPRINTF("All CU is allocated\n");
       }
       break;  // can only service a single input, if it failed it will fail for
               // others.
