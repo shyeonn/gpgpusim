@@ -46,6 +46,7 @@ extern const char *g_gpgpusim_version_string;
 extern int g_debug_execution;
 
 extern void print_splash();
+extern void remove_cycle_result();
 
 extern void ptxinfo_opencl_addinfo(
     std::map<std::string, function_info *> &kernels);
